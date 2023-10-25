@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using System.Text;
 using SharedModels;
+using System.Security.Claims;
 
 namespace Mvc.Areas.Identity.Pages.Account
 {
@@ -23,12 +24,14 @@ namespace Mvc.Areas.Identity.Pages.Account
     {
         private readonly SignInManager<IdentityUser> _signInManager;
         private readonly ILogger<LoginModel> _logger;
+        private readonly UserManager<IdentityUser> _userManager;
 
 
-        public LoginModel(SignInManager<IdentityUser> signInManager, ILogger<LoginModel> logger)
+        public LoginModel(SignInManager<IdentityUser> signInManager, ILogger<LoginModel> logger, UserManager<IdentityUser> userManager)
         {
             _signInManager = signInManager;
             _logger = logger;
+            _userManager = userManager;
         }
 
         /// <summary>
@@ -87,6 +90,28 @@ namespace Mvc.Areas.Identity.Pages.Account
             public bool RememberMe { get; set; }
         }
 
+        private async Task GetAndAddJwtTokenToUserClaims(IdentityUser user)
+        {
+            HttpClient httpClient = new HttpClient();
+            var response = await httpClient.PostAsJsonAsync("https://localhost:7036/api/Token", new LoginUser { UserName = Input.Email });
+            if (response.IsSuccessStatusCode)
+            {
+                var token = await response.Content.ReadAsStringAsync();
+
+                var customClaims = new List<Claim>
+                        {
+                            new Claim("JwtToken", token)
+                        };
+
+                await _userManager.AddClaimsAsync(user, customClaims);
+            }
+            else
+            {
+                // Handle the case where token generation failed (e.g., non-200 status code)
+                throw new Exception("Token generation failed");
+            }
+        }
+
         public async Task OnGetAsync(string returnUrl = null)
         {
             if (!string.IsNullOrEmpty(ErrorMessage))
@@ -117,9 +142,12 @@ namespace Mvc.Areas.Identity.Pages.Account
                 var result = await _signInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: false);
                 if (result.Succeeded)
                 {
-                        _logger.LogInformation("User logged in.");
-                        return LocalRedirect(returnUrl);
-                    }
+                    var user = await _userManager.FindByNameAsync(Input.Email);
+                    await GetAndAddJwtTokenToUserClaims(user); // get and add the jwt token
+
+                    _logger.LogInformation("User logged in.");
+                    return LocalRedirect(returnUrl);
+                }
                 if (result.RequiresTwoFactor)
                 {
                     return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = Input.RememberMe });

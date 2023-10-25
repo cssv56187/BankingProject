@@ -126,8 +126,6 @@ namespace Mvc.Areas.Identity.Pages.Account
                     _logger.LogInformation("User created a new account with password.");
 
                     var userId = await _userManager.GetUserIdAsync(user);
-
-                    await GetAndAddJwtTokenToUserClaims(user); // get and add the jwt token
                                      
                     var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
                     code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
@@ -160,27 +158,7 @@ namespace Mvc.Areas.Identity.Pages.Account
             return Page();
         }
 
-        private async Task GetAndAddJwtTokenToUserClaims(IdentityUser user)
-        {
-            HttpClient httpClient = new HttpClient();
-            var response = await httpClient.PostAsJsonAsync("https://localhost:7036/api/Token", new LoginUser { UserName = Input.Email });
-            if (response.IsSuccessStatusCode)
-            {
-                var token = await response.Content.ReadAsStringAsync();
 
-                var customClaims = new List<Claim>
-                        {
-                            new Claim("JwtToken", token)
-                        };
-
-                await _userManager.AddClaimsAsync(user, customClaims);
-            }
-            else
-            {
-                // Handle the case where token generation failed (e.g., non-200 status code)
-                throw new Exception("Token generation failed");
-            }
-        }
 
         private IdentityUser CreateUser()
         {
